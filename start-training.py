@@ -1,10 +1,23 @@
 import requests
 import random
 import subprocess
-import timea
+import time
 
-API_TOKEN = 'your_groq_ai_token'
+API_TOKEN = 'your-api-token'
 API_URL = 'https://api.groq.com/openai/v1/chat/completions'
+
+domain_topics = [
+    "Application Design and Build",
+    "Application Deployment",
+    "Application Observability and Maintenance",
+    "Application Environment, Configuration and Security",
+    "Services and Networking",
+    "Storage and Volume Management",
+    "Troubleshooting and Diagnostics",
+    "Workloads & Scheduling",
+    "Networking and Gateway API",
+    "Cluster Architecture and Extensions"
+]
 
 welcome_messages = [
     "Welcome to the CKAD trainer!",
@@ -15,56 +28,46 @@ welcome_messages = [
 def generate_welcome_message():
     return random.choice(welcome_messages)
 
-def generate_scenario():
-    prompt = """Generate ten interconnected CKAD exam questions in English. For each:
-1. Task description starting with "Task: "
-2. Validation command starting with "Validation command: "
-Separate questions with "---"
+def generate_question():
+    topic = random.choice(domain_topics)
+    prompt = f"""Generate a single CKAD exam question about {topic} in English. Provide:
+1. Task description starting with \"Task: \"
+2. Validation command starting with \"Validation command: \"
 Example:
 Task: Create a Pod named 'nginx' with image nginx:alpine and label 'app=web'
-Validation command: kubectl get pod nginx -o jsonpath='{.metadata.labels.app}' | grep -q web"""
+Validation command: kubectl get pod nginx -o jsonpath='{{.metadata.labels.app}}' | grep -q web"""
 
     headers = {'Authorization': f'Bearer {API_TOKEN}', 'Content-Type': 'application/json'}
     data = {
         'model': 'mixtral-8x7b-32768',
         'messages': [{'role': 'user', 'content': prompt}],
-        'max_tokens': 1000,
-        'temperature': 0.5,
+        'max_tokens': 300,
+        'temperature': 0.7,
     }
 
-    try:
-        response = requests.post(API_URL, headers=headers, json=data, timeout=30)
-        response.raise_for_status()
-        result = response.json()
-        return result.get('choices', [{}])[0].get('message', {}).get('content', '')
-    except Exception as e:
-        print(f"Scenario generation error: {e}")
-        return None
+    while True:
+        try:
+            response = requests.post(API_URL, headers=headers, json=data, timeout=90)
+            response.raise_for_status()
+            result = response.json()
+            content = result.get('choices', [{}])[0].get('message', {}).get('content', '')
+            task, validation = parse_question(content)
+            if task and validation:
+                return task, validation
+        except Exception as e:
+            print("Waiting for a valid question...")
+        time.sleep(10)
 
-def parse_scenario(response):
+def parse_question(response):
     if not response:
-        return []
-    questions = []
-    for section in response.split('---'):
-        task, validation = None, None
-        for line in section.split('\n'):
-            if line.startswith('Task:'):
-                task = line.replace('Task:', '').strip()
-            elif line.startswith('Validation command:'):
-                validation = line.replace('Validation command:', '').strip()
-        if task and validation:
-            questions.append({'task': task, 'validation': validation})
-    return questions
-
-def predefined_questions():
-    return [
-        {"task": "Create a Pod named 'nginx' with image nginx:alpine and label 'app=web'",
-         "validation": "kubectl get pod nginx -o jsonpath='{.metadata.labels.app}' | grep -q web"},
-        {"task": "Create a Deployment named 'frontend' with 3 replicas and image nginx:1.19",
-         "validation": "kubectl get deployment frontend -o jsonpath='{.spec.replicas}' | grep -q 3"},
-        {"task": "Expose the Deployment 'frontend' as a NodePort Service on port 80",
-         "validation": "kubectl get service frontend -o jsonpath='{.spec.ports[0].port}' | grep -q 80"}
-    ]
+        return None, None
+    task, validation = None, None
+    for line in response.split('\n'):
+        if line.startswith('Task:'):
+            task = line.replace('Task:', '').strip()
+        elif line.startswith('Validation command:'):
+            validation = line.replace('Validation command:', '').strip()
+    return task, validation
 
 def validate_solution(validation_command):
     try:
@@ -74,18 +77,26 @@ def validate_solution(validation_command):
     except subprocess.CalledProcessError:
         return False
 
-def generate_hint(task, validation_command):
-    prompt = f"""The user failed this CKAD task:
+def generate_hint_or_solution(task, validation_command, attempts):
+    if attempts < 4:
+        prompt = f"""The user failed this CKAD task:
 Task: {task}
 Validation command: {validation_command}
 Generate a helpful hint (in English) explaining the key concept and relevant kubectl commands without revealing the direct solution."""
+        max_tokens = 150
+    else:
+        prompt = f"""The user failed this CKAD task multiple times:
+Task: {task}
+Validation command: {validation_command}
+Provide the exact kubectl command or YAML manifest to solve it."""
+        max_tokens = 300
 
     headers = {'Authorization': f'Bearer {API_TOKEN}', 'Content-Type': 'application/json'}
     data = {
         'model': 'mixtral-8x7b-32768',
         'messages': [{'role': 'user', 'content': prompt}],
-        'max_tokens': 150,
-        'temperature': 0.3,
+        'max_tokens': max_tokens,
+        'temperature': 0.4,
     }
 
     try:
@@ -95,41 +106,33 @@ Generate a helpful hint (in English) explaining the key concept and relevant kub
     except Exception as e:
         return "Hint unavailable. Check Kubernetes documentation."
 
-def run_scenario(questions):
-    for idx, q in enumerate(questions, 1):
+def run_scenario():
+    for idx in range(1, 11):
         print(f"\n\033[1m*** Question {idx} ***\033[0m")
-        print(f"\033[1mTask:\033[0m {q['task']}\n")
+        task, validation = generate_question()
+        print(f"\033[1mTask:\033[0m {task}\n")
         
         attempts = 0
         while True:
             input("Press ENTER when you have completed the task...")
             
-            if validate_solution(q['validation']):
+            if validate_solution(validation):
                 print("\n✅ Correct!")
                 break
             else:
                 attempts += 1
-                print("\n❌ Validation failed. Generating hint...")
-                print(f"\033[33m{generate_hint(q['task'], q['validation'])}\033[0m")
+                print("\n❌ Validation failed.")
+                print(f"\033[33m{generate_hint_or_solution(task, validation, attempts)}\033[0m")
                 
-                if attempts >= 2:
-                    print("\n💡 Suggested solution:")
-                    print(f"Try: {q['validation']}")
+                if attempts >= 4:
+                    print("\n💡 Full solution:")
+                    print(f"Try: {validation}")
 
 def main():
     print("\033[1m" + generate_welcome_message() + "\033[0m")
     print("\n📌 Open a terminal with kubectl access ready before proceeding.\n")
-    print("\n🚀 Preparing CKAD scenario...")
-    scenario_raw = generate_scenario()
-    
-    questions = parse_scenario(scenario_raw) if scenario_raw else []
-    
-    if len(questions) < 10:
-        questions.extend(predefined_questions()[:10 - len(questions)])
-    
     input("\nPress ENTER to start the test...")
-    
-    run_scenario(questions)
+    run_scenario()
     print("\n🎉 Training completed! Verify the created resources using: kubectl get all")
 
 if __name__ == "__main__":
