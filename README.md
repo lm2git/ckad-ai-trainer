@@ -1,6 +1,4 @@
-# 🚀 CKAD AI Trainer - Kubernetes AI Trainer 
-
-![Kubernetes Logo](https://upload.wikimedia.org/wikipedia/commons/3/39/Kubernetes_logo_without_workmark.svg)
+# 🚀 CKAD AI Trainer - Kubernetes AI Trainer ![Kubernetes Logo](https://upload.wikimedia.org/wikipedia/commons/3/39/Kubernetes_logo_without_workmark.svg)
 
 ## 📌 Introduction
 This script generates practice questions for the **CKAD (Certified Kubernetes Application Developer)** exam using the **Groq API**. It helps you enhance your Kubernetes skills by simulating real-world tasks with automatic validation.
