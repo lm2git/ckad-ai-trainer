@@ -57,11 +57,6 @@ python ckad_trainer.py
 kubectl get all
 ```
 
----
-
-## 📷 Example Execution
-
-![Example CKAD Trainer](https://upload.wikimedia.org/wikipedia/commons/b/b8/Kubectl_output.png)
 
 ---
 
